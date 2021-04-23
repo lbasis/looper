@@ -1,0 +1,3 @@
+include ':looper'
+include ':app'
+rootProject.name = "Demo"
