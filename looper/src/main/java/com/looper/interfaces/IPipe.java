@@ -12,7 +12,6 @@ public interface IPipe<IM extends IMaterial<M>, M> {
 
     void setMaxTry(int maxTry);
 
-
     void setDelay(int delay);
 
     /**
@@ -63,8 +62,6 @@ public interface IPipe<IM extends IMaterial<M>, M> {
      * 处理完毕回调
      *
      * @param index looper 索引
-     * @param err   处理完成时 剩余的原料数
-     * @param err   处理原料总数
      */
-    void onComplete(int index, int err, int total);
+    void onComplete(int index);
 }

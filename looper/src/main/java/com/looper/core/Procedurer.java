@@ -8,18 +8,27 @@ import android.text.TextUtils;
 import com.looper.Logger;
 import com.looper.interfaces.IProcedure;
 import com.looper.interfaces.IMaterial;
+import com.looper.interfaces.IProcessStatus;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 当个流程工序处理队列
+ * 当个工序：
+ * 自动轮训工序：
+ * 1. 自动轮训直到materials为空，pop的原料为null 此时回调onComplete
+ * 2. apply时，只有在执行完成（判断条件：execute == null ）才手动触发loopNext。
+ * 非自动轮训工序：
+ * 1. 非自动轮训，需在apply是手动触发loopNext，并且在处理出异常时，未到最大尝试次数是，手动触发loopNext，直至到最大尝试次数。
+ * 2. 在达到最大尝试次数时，即为处理出错，若此时materials为空，在视为处理完毕，回调onComplete
+ * 3. 原料只能添加一个处理一个，若成功，在等待next原料apply；若出异常 未到最大尝试次数，
+ * 手动触发loopNext，达最大尝试次数，视为出错，终止，此时需要向管道分发原料
  *
  * @param <M> 原料的类型
  */
 public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThread implements IProcedure<IM, M> {
-    private final static String TAG = "Procedurer";
+    private final String TAG = getName();
     protected final List<IM> _materials = new ArrayList<>();
     protected final List<IM> _error = new ArrayList<>();
     protected final List<IM> _success = new ArrayList<>();
@@ -30,6 +39,8 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
     private IM _execute;
     private int _maxTry = MAX_TRY;//最大尝试次数
     private int _delay;
+    // 是否自定loopNext
+    private boolean autoLoopNext;
 
     /* 处理next的handler */
     public static class LpHandler extends Handler {
@@ -52,10 +63,12 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
     }
 
     /**
-     * @param name 名称
+     * @param name         名称
+     * @param autoLoopNext 自动轮训
      */
-    public Procedurer(String name) {
-        super(TextUtils.isEmpty(name) ? TAG : name);
+    public Procedurer(String name, boolean autoLoopNext) {
+        super(TextUtils.isEmpty(name) ? "Procedurer" : name);
+        this.autoLoopNext = autoLoopNext;
         start();
         loopHander = new LpHandler(this);
     }
@@ -122,13 +135,13 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
             }
         }
         int total = _materials.size();
-        Logger.e(TAG, getName()
-                + " : surplus = " + surplus
+        Logger.e(TAG, " surplus = " + surplus
                 + "  apply = " + count
                 + "  current = " + total);
-        // 正在处理对象不存在 表明所有原料已处理完毕即回调onComplete
-        // 此时需手动触发轮训
-        if (total > 0 && null == _execute) {
+        // apply 后需要自动触发loopNext的情况：
+        // 1. 非自动轮训。
+        // 2. 自动轮训，且轮循结束即回调onComplete，此时正处理的原料为null
+        if (total > 0 && (!autoLoopNext || null == _execute)) {
             loopNext(_delay);
         }
         return count;
@@ -157,7 +170,6 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
         }
     }
 
-
     /**
      * 轮训下一个 不影响添加操作
      *
@@ -177,7 +189,7 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
 
     public void resumeLoop() {
         _pause = false;
-        Logger.e(TAG, getName() + "：resume " + _execute);
+        Logger.e(TAG, " resume " + _execute);
         loopNext(_delay);
     }
 
@@ -186,10 +198,10 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
         _pause = true;
         // 移除消息
         loopHander.removeMessages(CODE_NEXT);
-        Logger.e(TAG, getName() + "：pause " + _execute);
+        Logger.e(TAG, " pause " + _execute);
         //暂停时的处理结果 注意暂停时 原料中可能会有未处理原料 total == success + error + material
         int err = _error.size();
-        Logger.e(TAG, getName() + "：error " + err + " total = " + (err + _success.size() + _materials.size()));
+        Logger.e(TAG, " pause ：error " + err + " total = " + (err + _success.size() + _materials.size()));
     }
 
     @Override
@@ -235,30 +247,45 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
                 _error.remove(_execute);
                 // 添加success列表
                 _success.add(_execute);
-                Logger.e(TAG, getName() + " process 成功:" + _execute.material());
+                Logger.e(TAG, " process 成功:" + _execute.material());
             } else {// 出现异常
                 if (_execute.getCount() < _maxTry) {
                     // 还可重试，重新加入原料列表的最后
                     add(_execute);
-                    Logger.e(TAG, getName() + " process 异常，待重试:" + _execute.material());
+                    Logger.e(TAG, " process 异常，待重试:" + _execute.material());
+                    // TODO: 2021/5/12 fix：onComplete问题
+                    if (!autoLoopNext) {
+                        loopNext(_delay);
+                    }
                 } else {// 不可尝试 添加error列表
                     _success.remove(_execute);
                     _error.add(_execute);
-                    Logger.e(TAG, getName() + " process 错误:" + _execute.material());
+                    Logger.e(TAG, " process 错误:" + _execute.material());
                 }
             }
-            if (result.loopNext()) {
+            // TODO: 2021/5/12 fix：onComplete问题
+            if (!autoLoopNext) {
+                // 非自动轮训，不会走的null的判断
+                if (_materials.isEmpty()) {
+                    onComplete();
+                }
+            }
+            if (autoLoopNext) {
                 loopNext(_delay);
             }
         } else {
-            int err = _error.size();
-            int success = _success.size();
-            onComplete(err, err + success);
+            onComplete();
         }
     }
 
     @Override
-    public void onComplete(int err, int total) {
+    public IProcessStatus<IM, M> getProcessStatus() {
+        int total = _error.size() + _success.size() + _materials.size();
+        return new ProcessStatus(_error, total);
+    }
+
+    @Override
+    public void onComplete() {
     }
 
     @Override

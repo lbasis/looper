@@ -19,13 +19,6 @@ public interface IMaterial<M> {
     boolean state();
 
     /**
-     * 获取轮训next标识
-     *
-     * @return true：轮训next，false：不轮训
-     */
-    boolean loopNext();
-
-    /**
      * 设置当前尝试次数
      *
      * @param count

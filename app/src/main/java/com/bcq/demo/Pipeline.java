@@ -16,7 +16,7 @@ public class Pipeline extends FlowPipe<Material<String>, String> {
     }
 
     private Pipeline() {
-        super(2);
+        super(3,true);
         setDelay(200);
         setMaxTry(2);
     }
@@ -30,6 +30,6 @@ public class Pipeline extends FlowPipe<Material<String>, String> {
         Random random = new Random();
         int count = random.nextInt();
         boolean success = count > 0;
-        return new Material(result, false, success);
+        return new Material(result, success);
     }
 }

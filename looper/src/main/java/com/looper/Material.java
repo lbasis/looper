@@ -6,21 +6,14 @@ public class Material<M> implements IMaterial<M> {
     private M m;
     private int count;
     private boolean status = false;
-    private boolean loopNext = true;
 
     public Material(M m) {
         this.m = m;
     }
 
-    public Material(M m, boolean loopNext, boolean status) {
+    public Material(M m,boolean status) {
         this.m = m;
-        this.loopNext = loopNext;
         this.status = status;
-    }
-
-    @Override
-    public boolean loopNext() {
-        return loopNext;
     }
 
     @Override
@@ -56,7 +49,6 @@ public class Material<M> implements IMaterial<M> {
                 "m:" + m +
                 ", count:" + count +
                 ", status:" + status +
-                ", loopNext:" + loopNext +
                 '}';
     }
 }

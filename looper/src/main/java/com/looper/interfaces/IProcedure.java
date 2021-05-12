@@ -1,7 +1,5 @@
 package com.looper.interfaces;
 
-import java.util.List;
-
 /**
  * 工序接口
  *
@@ -15,7 +13,6 @@ public interface IProcedure<IM extends IMaterial<M>, M> {
     int MAX_TRY = 2;
 
     void setMaxTry(int maxTry);
-
 
     void setDelay(int delay);
 
@@ -85,9 +82,8 @@ public interface IProcedure<IM extends IMaterial<M>, M> {
 
     /**
      * 处理完毕回调
-     *
-     * @param error 处理失败的记录数
-     * @param total 总记录数
      */
-    void onComplete(int error, int total);
+    void onComplete();
+
+    IProcessStatus<IM, M> getProcessStatus();
 }
