@@ -3,24 +3,24 @@ package com.looper;
 import com.looper.interfaces.IMaterial;
 
 public class Material<M> implements IMaterial<M> {
-    private long delay = 0;//任务处理延迟时间
-    private int count = 0;//尝试次数
-    private int max = 1;//尝试次数
-    private boolean execute = false;
     private M m;
+    private int count;
+    private boolean status = false;
+    private boolean loopNext = true;
 
-    public Material(M m, int max) {
+    public Material(M m) {
         this.m = m;
-        this.max = max;
+    }
+
+    public Material(M m, boolean loopNext, boolean status) {
+        this.m = m;
+        this.loopNext = loopNext;
+        this.status = status;
     }
 
     @Override
-    public boolean available() {
-        boolean b = !execute && count < max;
-        if (!b) {
-            printUnAvaliable(m);
-        }
-        return b;
+    public boolean loopNext() {
+        return loopNext;
     }
 
     @Override
@@ -29,27 +29,18 @@ public class Material<M> implements IMaterial<M> {
     }
 
     @Override
-    public long delay() {
-        return delay;
+    public boolean state() {
+        return status;
     }
 
-    public void setDelay(long delay) {
-        this.delay = delay;
-    }
-
+    @Override
     public void setCount(int count) {
         this.count = count;
     }
 
+    @Override
     public int getCount() {
         return count;
-    }
-
-    public void setExecute(boolean execute) {
-        this.execute = execute;
-    }
-
-    protected void printUnAvaliable(M material) {
     }
 
     @Override
@@ -57,5 +48,15 @@ public class Material<M> implements IMaterial<M> {
         return this == o ||
                 (o instanceof Material &&
                         null != m && m.equals(((Material) o).m));
+    }
+
+    @Override
+    public String toString() {
+        return "{" +
+                "m:" + m +
+                ", count:" + count +
+                ", status:" + status +
+                ", loopNext:" + loopNext +
+                '}';
     }
 }
