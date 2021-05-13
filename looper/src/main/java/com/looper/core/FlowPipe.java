@@ -1,5 +1,6 @@
 package com.looper.core;
 
+import android.util.Log;
 import android.util.SparseArray;
 
 import com.looper.Logger;
@@ -44,6 +45,8 @@ public abstract class FlowPipe<IM extends IMaterial<M>, M> implements IPipe<IM, 
     private int maxTry = IProcedure.MAX_TRY;
     private int delay = 0;
     private boolean autoLoopNext;
+    // 记录流转节点索引
+    private List<Integer> applyIndexs = new ArrayList<>();
 
     public FlowPipe(int procedure) {
         this(procedure, true);
@@ -67,47 +70,53 @@ public abstract class FlowPipe<IM extends IMaterial<M>, M> implements IPipe<IM, 
         Procedurer looper;
         for (int i = 0; i < maxProcedure; i++) {
             final int index = i;
-            looper = new Procedurer<IM, M>("Procedure-" + i, autoLoopNext) {
+            looper = new Procedurer<IM, M>(i, autoLoopNext) {
                 @Override
                 public IM onProcess(IM material) {
-                    return FlowPipe.this.process(index, material);
+                    return FlowPipe.this.onProcess(index, material);
+                }
+
+                @Override
+                protected void onAfterProcess(IM material, IM result) {
+                    if (result.state()) {
+                        //流转向下道工序
+                        IProcedure next = FlowPipe.this.getProcedure(index + 1);
+                        if (null != result && null != next) {
+                            int count = next.apply(result);
+                            // 移出状态集
+                            if (count > 0) {
+                                completeResult.remove(index + 1);
+                                if (!applyIndexs.contains(index + 1))
+                                    applyIndexs.add(index + 1);
+                            }
+                        }
+                    }
+                    // 自动轮训 不需管道分发next原料；
+                    // 非自动轮训 在工序流转异常时 需手动向管道分发next原料。
+                    if (!autoLoopNext) {
+                        //后分发next原料
+                        // 1. 处理出错且达最大尝试次数， 出错未达到最大尝试测试，在节点内部出里
+                        // 2. 最后一节点 成功 或 出错且达最大尝试次数
+                        if ((index == maxProcedure - 1 && (result.state() || material.getCount() >= maxTry))
+                                || (!result.state() && material.getCount() >= maxTry)) {
+                            IMaterial m = getProcedure(0).next();
+                            // fix 问题：首个节点 出里出错，再次looper next 导致execute为空，会再次回调onComplete
+                            if (getProcedure(0).count() > 0) {
+                                getProcedure(0).loopNext(delay);
+                            }
+                        }
+                    }
                 }
 
                 @Override
                 public void onComplete() {
                     FlowPipe.this.onComplete(index);
+
                 }
             };
             looper.setMaxTry(maxTry);
             procedures.add(looper);
         }
-    }
-
-    public IM process(int index, IM material) {
-        //处理原料
-        IM result = FlowPipe.this.onProcess(index, material);
-        if (result.state()) {
-            //流转向下道工序
-            IProcedure next = FlowPipe.this.getProcedure(index + 1);
-            if (null != result && null != next) {
-                int count = next.apply(result);
-                // 移出状态集
-                if (count > 0) {
-                    completeResult.remove(index + 1);
-                }
-            }
-        }
-        // 自动轮训 不需管道分发next原料；
-        // 非自动轮训 在工序流转异常时 需手动向管道分发next原料。
-        if (!autoLoopNext) {
-            //处理出错 或 最后一道工程 后分发next原料
-            if (!result.state()) {
-                if (index == maxProcedure - 1) {
-                    getProcedure(0).loopNext(delay);
-                }
-            }
-        }
-        return result;
     }
 
     @Override
@@ -135,6 +144,8 @@ public abstract class FlowPipe<IM extends IMaterial<M>, M> implements IPipe<IM, 
             int count = first.apply(obj);
             if (count > 0) {
                 completeResult.remove(0);
+                if (!applyIndexs.contains(0))
+                    applyIndexs.add(0);
             }
         }
     }
@@ -183,9 +194,13 @@ public abstract class FlowPipe<IM extends IMaterial<M>, M> implements IPipe<IM, 
     @Override
     public void onComplete(int index) {
         completeResult.append(index, getProcedure(index).getProcessStatus());
-        if (maxProcedure == completeResult.size()) {
+        Logger.e(TAG, " onComplete ：index " + index + " apply " + applyIndexs.size() + " current = " + completeResult.size());
+        // 此处使用流转节点索引数替代maxProcedure作为所有节点都处理完成，
+        // 若果原料流转到某个节点时，所有问题都保错，导致不是所有节点都能流转。
+        if (applyIndexs.size() == completeResult.size()) {
             showResult();
             clear();
+            applyIndexs.clear();
         }
     }
 

@@ -16,15 +16,15 @@ public class Pipeline extends FlowPipe<Material<String>, String> {
     }
 
     private Pipeline() {
-        super(3,true);
-        setDelay(200);
-        setMaxTry(2);
+        super(8,false);
+        setDelay(0);
+        setMaxTry(1);
     }
 
     @Override
     public Material<String> onProcess(int index, Material<String> material) {
         // TODO: 2/24/21 模拟耗时操作
-        SystemClock.sleep(index == 0 ? 200 : index == 2 ? 400 : 800);
+//        SystemClock.sleep(index == 0 ? 20 : index == 2 ? 40 : 80);
         String result = material.material() + "_P" + index;
         //随机模拟处理失败
         Random random = new Random();

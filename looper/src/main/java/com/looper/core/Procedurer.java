@@ -29,6 +29,7 @@ import java.util.List;
  */
 public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThread implements IProcedure<IM, M> {
     private final String TAG = getName();
+    private final int index;
     protected final List<IM> _materials = new ArrayList<>();
     protected final List<IM> _error = new ArrayList<>();
     protected final List<IM> _success = new ArrayList<>();
@@ -63,11 +64,12 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
     }
 
     /**
-     * @param name         名称
+     * @param index        节点索引
      * @param autoLoopNext 自动轮训
      */
-    public Procedurer(String name, boolean autoLoopNext) {
-        super(TextUtils.isEmpty(name) ? "Procedurer" : name);
+    public Procedurer(int index, boolean autoLoopNext) {
+        super("Procedurer-" + index);
+        this.index = index;
         this.autoLoopNext = autoLoopNext;
         start();
         loopHander = new LpHandler(this);
@@ -134,14 +136,14 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
                 }
             }
         }
-        int total = _materials.size();
+        int current = _materials.size();
         Logger.e(TAG, " surplus = " + surplus
                 + "  apply = " + count
-                + "  current = " + total);
+                + "  current = " + current);
         // apply 后需要自动触发loopNext的情况：
         // 1. 非自动轮训。
         // 2. 自动轮训，且轮循结束即回调onComplete，此时正处理的原料为null
-        if (total > 0 && (!autoLoopNext || null == _execute)) {
+        if (current > 0 && (!autoLoopNext || null == _execute)) {
             loopNext(_delay);
         }
         return count;
@@ -150,6 +152,7 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
     @Override
     public IM next() {
         synchronized (_materials) {
+            if (_materials.isEmpty()) return null;
             return _materials.get(0);
         }
     }
@@ -185,6 +188,12 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
         Message msg = Message.obtain();
         msg.what = CODE_NEXT;
         loopHander.sendMessageDelayed(msg, delay);
+        if (!autoLoopNext) {
+            if (index == 0) {
+                Logger.e(TAG, "****************** 分发原料 *************************************");
+            }
+            Logger.e(TAG, " loopNext ");
+        }
     }
 
     public void resumeLoop() {
@@ -201,7 +210,7 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
         Logger.e(TAG, " pause " + _execute);
         //暂停时的处理结果 注意暂停时 原料中可能会有未处理原料 total == success + error + material
         int err = _error.size();
-        Logger.e(TAG, " pause ：error " + err + " total = " + (err + _success.size() + _materials.size()));
+        Logger.e(TAG, " pause ：error " + err + " success = " + _success.size() + " material = " + _materials.size());
     }
 
     @Override
@@ -234,9 +243,7 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
     protected void process() {
         if (null != _execute) {
             // try count +1
-            if (_execute.getCount() < _maxTry) {
-                _execute.setCount(_execute.getCount() + 1);
-            }
+            _execute.setCount(_execute.getCount() + 1);
             IM result = onProcess(_execute);
             if (null == result) {
                 Logger.e(TAG, " The Result for onProcess() is Null !");
@@ -263,6 +270,7 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
                     Logger.e(TAG, " process 错误:" + _execute.material());
                 }
             }
+            onAfterProcess(_execute, result);
             // TODO: 2021/5/12 fix：onComplete问题
             if (!autoLoopNext) {
                 // 非自动轮训，不会走的null的判断
@@ -282,6 +290,9 @@ public abstract class Procedurer<IM extends IMaterial<M>, M> extends HandlerThre
     public IProcessStatus<IM, M> getProcessStatus() {
         int total = _error.size() + _success.size() + _materials.size();
         return new ProcessStatus(_error, total);
+    }
+
+    protected void onAfterProcess(IM material, IM result) {
     }
 
     @Override
