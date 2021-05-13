@@ -13,13 +13,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 管道流封装：
- *
- * @param <IM>
- * @param <M>
- */
-
-/**
  * 管道流：
  * 1. 管道中的节点（流水线上的工序）互不影响，并行。
  * 2. 管道根据节点顺序维护一个节点集合。
